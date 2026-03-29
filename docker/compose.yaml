@@ -1,0 +1,27 @@
+services:
+  synapse:
+    image: ${SYNAPSE_IMAGE}
+    container_name: nero-synapse
+    environment:
+      SYNAPSE_CONFIG_PATH: /data/homeserver.yaml
+    volumes:
+      - ./runtime/synapse:/data
+    ports:
+      - "${SYNAPSE_PORT}:8008"
+
+  dendrite:
+    image: ${DENDRITE_IMAGE}
+    container_name: nero-dendrite
+    volumes:
+      - ./runtime/dendrite:/etc/dendrite
+    ports:
+      - "${DENDRITE_CLIENT_PORT}:8008"
+      - "${DENDRITE_FEDERATION_PORT}:8448"
+    command:
+      - /usr/bin/dendrite
+      - --config
+      - /etc/dendrite/dendrite.yaml
+      - --tls-cert
+      - /etc/dendrite/server.crt
+      - --tls-key
+      - /etc/dendrite/server.key

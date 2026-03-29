@@ -1,0 +1,6 @@
+bin/
+docker/.env
+docker/runtime/
+migration.yaml
+migration_state.json
+temp_passwords.csv

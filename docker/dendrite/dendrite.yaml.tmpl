@@ -1,0 +1,31 @@
+version: 2
+
+global:
+  server_name: ${DENDRITE_SERVER_NAME}
+  private_key: /etc/dendrite/matrix_key.pem
+  private_key_passphrase: ""
+  database:
+    connection_string: file:/etc/dendrite/dendrite.db
+    max_open_conns: 10
+    max_idle_conns: 2
+    conn_max_lifetime: -1
+  well_known_server_name: ${DENDRITE_SERVER_NAME}
+  jetstream:
+    storage_path: /etc/dendrite
+
+logging:
+  - type: std
+    level: info
+
+client_api:
+  registration_disabled: true
+  guests_disabled: true
+  registration_shared_secret: "${DENDRITE_REGISTRATION_SHARED_SECRET}"
+  enable_registration_captcha: false
+  recaptcha_public_key: ""
+  recaptcha_private_key: ""
+  recaptcha_bypass_secret: ""
+  recaptcha_siteverify_api: ""
+
+media_api:
+  base_path: /etc/dendrite/media
