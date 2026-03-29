@@ -280,7 +280,17 @@ func (m *Migrator) migrateRoom(ctx context.Context, room models.Room) error {
 		return nil
 	}
 
-	targetRoomID, err := m.dendrite.CreateRoom(ctx, room.Name, room.Topic, room.Canonical, room.RoomVersion, room.Encrypted)
+	roomActorToken, actorTargetUserID, err := m.loginRoomActor(ctx, room)
+	if err != nil {
+		m.recordRoom(room.RoomID, models.RoomResult{
+			Migrated:  false,
+			Error:     err.Error(),
+			UpdatedAt: time.Now().UTC(),
+		})
+		return fmt.Errorf("choose room actor for %s: %w", room.RoomID, err)
+	}
+
+	targetRoomID, err := m.dendrite.CreateRoom(ctx, roomActorToken, room.Name, room.Topic, room.Canonical, room.RoomVersion, room.Encrypted)
 	if err != nil {
 		m.recordRoom(room.RoomID, models.RoomResult{
 			Migrated:  false,
@@ -291,7 +301,8 @@ func (m *Migrator) migrateRoom(ctx context.Context, room models.Room) error {
 	}
 
 	for _, ev := range filterReplayableState(room.State) {
-		if err := m.dendrite.PutState(ctx, targetRoomID, ev.Type, ev.StateKey, ev.Content); err != nil {
+		content := rewriteStateContent(ev, m.state.Users)
+		if err := m.dendrite.PutState(ctx, roomActorToken, targetRoomID, ev.Type, ev.StateKey, content); err != nil {
 			m.recordRoom(room.RoomID, models.RoomResult{
 				Migrated:     false,
 				TargetRoomID: targetRoomID,
@@ -307,7 +318,10 @@ func (m *Migrator) migrateRoom(ctx context.Context, room models.Room) error {
 		if !ok || !userResult.Migrated {
 			continue
 		}
-		if err := m.dendrite.InviteUser(ctx, targetRoomID, userResult.TargetUserID); err != nil && !strings.Contains(strings.ToLower(err.Error()), "already") {
+		if userResult.TargetUserID == actorTargetUserID {
+			continue
+		}
+		if err := m.dendrite.InviteUser(ctx, roomActorToken, targetRoomID, userResult.TargetUserID); err != nil && !strings.Contains(strings.ToLower(err.Error()), "already") {
 			m.recordRoom(room.RoomID, models.RoomResult{
 				Migrated:     false,
 				TargetRoomID: targetRoomID,
@@ -405,6 +419,33 @@ func filterReplayableState(events []models.StateEvent) []models.StateEvent {
 	return filtered
 }
 
+func rewriteStateContent(ev models.StateEvent, users map[string]models.UserResult) map[string]any {
+	if ev.Type != "m.room.power_levels" {
+		return ev.Content
+	}
+
+	rewritten := make(map[string]any, len(ev.Content))
+	for key, value := range ev.Content {
+		rewritten[key] = value
+	}
+
+	rawUsers, ok := ev.Content["users"].(map[string]any)
+	if !ok {
+		return rewritten
+	}
+
+	mappedUsers := make(map[string]any, len(rawUsers))
+	for userID, level := range rawUsers {
+		if result, exists := users[userID]; exists && result.Migrated {
+			mappedUsers[result.TargetUserID] = level
+			continue
+		}
+		mappedUsers[userID] = level
+	}
+	rewritten["users"] = mappedUsers
+	return rewritten
+}
+
 func (m *Migrator) recordUser(sourceUserID string, result models.UserResult) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -469,4 +510,26 @@ func isAlreadyExistsError(err error) bool {
 	return strings.Contains(msg, "taken") ||
 		strings.Contains(msg, "already exists") ||
 		strings.Contains(msg, "user in use")
+}
+
+func (m *Migrator) loginRoomActor(ctx context.Context, room models.Room) (string, string, error) {
+	actorSourceUserID := roomActorSourceUserID(room, m.state.Users)
+	if actorSourceUserID == "" {
+		return "", "", fmt.Errorf("no migrated local user available to own room")
+	}
+	userResult := m.state.Users[actorSourceUserID]
+	token, err := m.dendrite.Login(ctx, trimUserID(userResult.TargetUserID), userResult.TempPassword)
+	if err != nil {
+		return "", "", fmt.Errorf("login actor %s: %w", actorSourceUserID, err)
+	}
+	return token, userResult.TargetUserID, nil
+}
+
+func roomActorSourceUserID(room models.Room, users map[string]models.UserResult) string {
+	for _, member := range room.Members {
+		if result, ok := users[member]; ok && result.Migrated {
+			return member
+		}
+	}
+	return ""
 }

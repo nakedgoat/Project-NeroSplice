@@ -109,7 +109,7 @@ func (c *Client) Login(ctx context.Context, localpart, password string) (string,
 	return res.AccessToken, nil
 }
 
-func (c *Client) CreateRoom(ctx context.Context, name, topic, alias, roomVersion string, encrypted bool) (string, error) {
+func (c *Client) CreateRoom(ctx context.Context, token, name, topic, alias, roomVersion string, encrypted bool) (string, error) {
 	payload := map[string]any{
 		"name": name,
 	}
@@ -136,24 +136,24 @@ func (c *Client) CreateRoom(ctx context.Context, name, topic, alias, roomVersion
 	var res struct {
 		RoomID string `json:"room_id"`
 	}
-	if err := c.postJSON(ctx, "/_matrix/client/v3/createRoom", c.adminToken, payload, &res); err != nil {
+	if err := c.postJSON(ctx, "/_matrix/client/v3/createRoom", token, payload, &res); err != nil {
 		return "", err
 	}
 	return res.RoomID, nil
 }
 
-func (c *Client) PutState(ctx context.Context, roomID, eventType, stateKey string, content map[string]any) error {
+func (c *Client) PutState(ctx context.Context, token, roomID, eventType, stateKey string, content map[string]any) error {
 	p := "/_matrix/client/v3/rooms/" + url.PathEscape(roomID) + "/state/" + url.PathEscape(eventType)
 	if stateKey != "" {
 		p += "/" + url.PathEscape(stateKey)
 	}
-	return c.putJSON(ctx, p, c.adminToken, content, nil)
+	return c.putJSON(ctx, p, token, content, nil)
 }
 
-func (c *Client) InviteUser(ctx context.Context, roomID, userID string) error {
+func (c *Client) InviteUser(ctx context.Context, token, roomID, userID string) error {
 	payload := map[string]any{"user_id": userID}
 	p := "/_matrix/client/v3/rooms/" + url.PathEscape(roomID) + "/invite"
-	return c.postJSON(ctx, p, c.adminToken, payload, nil)
+	return c.postJSON(ctx, p, token, payload, nil)
 }
 
 func (c *Client) JoinRoom(ctx context.Context, token, roomID string) error {

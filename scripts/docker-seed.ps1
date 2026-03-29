@@ -52,8 +52,21 @@ function Get-LoginToken {
         password = $Password
     } | ConvertTo-Json -Depth 5
 
-    $res = Invoke-RestMethod -Method Post -Uri "$BaseUrl/_matrix/client/v3/login" -ContentType "application/json" -Body $payload
-    return $res.access_token
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        try {
+            $res = Invoke-RestMethod -Method Post -Uri "$BaseUrl/_matrix/client/v3/login" -ContentType "application/json" -Body $payload
+            return $res.access_token
+        } catch {
+            $body = $_.ErrorDetails.Message
+            if ($body -match '"errcode"\s*:\s*"M_LIMIT_EXCEEDED"' -and $body -match '"retry_after_ms"\s*:\s*([0-9]+)') {
+                $sleepMs = [int]$matches[1]
+                Start-Sleep -Milliseconds ([Math]::Min($sleepMs + 250, 300000))
+                continue
+            }
+            throw
+        }
+    }
+    throw "Timed out acquiring login token for $User"
 }
 
 function Register-DendriteUser {
@@ -115,6 +128,7 @@ docker compose @composeArgs exec -T synapse register_new_matrix_user `
     -u $cfg.SYNAPSE_ADMIN_USER `
     -p $cfg.SYNAPSE_ADMIN_PASSWORD `
     -a `
+    --exists-ok `
     -c /data/homeserver.yaml `
     http://localhost:8008 | Out-Host
 

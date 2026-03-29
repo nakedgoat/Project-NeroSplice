@@ -343,11 +343,11 @@ func TestMigrateAllEndToEnd(t *testing.T) {
 	if len(createdUsers) != 1 || createdUsers[0] != "alice" {
 		t.Fatalf("unexpected created users: %#v", createdUsers)
 	}
-	if len(invitedUsers) != 1 || invitedUsers[0] != "@alice:target.test" {
+	if len(invitedUsers) != 0 {
 		t.Fatalf("unexpected invited users: %#v", invitedUsers)
 	}
-	if len(joinedRooms) != 1 {
-		t.Fatalf("expected one joined room, got %#v", joinedRooms)
+	if len(joinedRooms) != 0 {
+		t.Fatalf("expected no joined room calls, got %#v", joinedRooms)
 	}
 	if len(uploadedMedia) != 1 || !bytes.Equal(uploadedMedia[0], avatarBytes) {
 		t.Fatalf("unexpected uploaded media: %#v", uploadedMedia)

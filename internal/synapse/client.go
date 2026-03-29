@@ -56,7 +56,7 @@ func (c *Client) ListUsers(ctx context.Context, limit int) ([]models.User, error
 		DisplayName string `json:"displayname"`
 		AvatarURL   string `json:"avatar_url"`
 		Admin       bool   `json:"admin"`
-		Deactivated int    `json:"deactivated"`
+		Deactivated json.RawMessage `json:"deactivated"`
 		IsGuest     bool   `json:"is_guest"`
 	}
 	type response struct {
@@ -90,7 +90,7 @@ func (c *Client) ListUsers(ctx context.Context, limit int) ([]models.User, error
 				DisplayName: item.DisplayName,
 				AvatarURL:   item.AvatarURL,
 				Admin:       item.Admin,
-				Deactivated: item.Deactivated != 0,
+				Deactivated: deactivatedValue(item.Deactivated),
 			})
 			if limit > 0 && len(users) >= limit {
 				break
@@ -104,6 +104,24 @@ func (c *Client) ListUsers(ctx context.Context, limit int) ([]models.User, error
 	}
 
 	return users, nil
+}
+
+func deactivatedValue(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+
+	var asBool bool
+	if err := json.Unmarshal(raw, &asBool); err == nil {
+		return asBool
+	}
+
+	var asInt int
+	if err := json.Unmarshal(raw, &asInt); err == nil {
+		return asInt != 0
+	}
+
+	return false
 }
 
 func (c *Client) ListRooms(ctx context.Context, limit int) ([]models.Room, error) {

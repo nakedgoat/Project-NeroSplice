@@ -51,7 +51,6 @@ if (-not (Test-Path $envPath)) {
 $cfg = Read-DockerEnv -Path $envPath
 $synapseRuntime = Join-Path $dockerDir "runtime/synapse"
 $dendriteRuntime = Join-Path $dockerDir "runtime/dendrite"
-$dendriteTemplatePath = Join-Path $dockerDir "dendrite/dendrite.yaml.tmpl"
 $dendriteConfigPath = Join-Path $dendriteRuntime "dendrite.yaml"
 
 New-Item -ItemType Directory -Force -Path $synapseRuntime | Out-Null
@@ -82,11 +81,20 @@ if (-not (Test-Path (Join-Path $dendriteRuntime "matrix_key.pem")) -or -not (Tes
         --server $cfg.DENDRITE_SERVER_NAME | Out-Host
 }
 
-$dendriteConfig = Get-Content $dendriteTemplatePath -Raw
-foreach ($key in $cfg.Keys) {
-    $dendriteConfig = $dendriteConfig.Replace('$' + '{' + $key + '}', $cfg[$key])
-}
-Set-Content -Path $dendriteConfigPath -Value $dendriteConfig -NoNewline
+$dendriteConfigLines = docker run --rm `
+    --entrypoint generate-config `
+    $cfg.DENDRITE_IMAGE `
+    -ci `
+    -server $cfg.DENDRITE_SERVER_NAME `
+    -dir /etc/dendrite
+
+$dendriteConfig = [string]::Join("`n", $dendriteConfigLines)
+$dendriteConfig = $dendriteConfig `
+    -replace 'registration_disabled:\s*false', 'registration_disabled: true' `
+    -replace 'registration_shared_secret:\s*complement', ('registration_shared_secret: ' + $cfg.DENDRITE_REGISTRATION_SHARED_SECRET) `
+    -replace 'guests_disabled:\s*false', 'guests_disabled: true'
+
+Set-Content -Path $dendriteConfigPath -Value $dendriteConfig
 
 if ($Start) {
     docker compose --env-file $envPath -f (Join-Path $dockerDir "compose.yaml") up -d | Out-Host
